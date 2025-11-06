@@ -1,0 +1,41 @@
+＃コード作成試行１（次の内容を生成AIのプロンプトに入力：Pythonを使って、PDFに書かれている複数のキーワード、例えば「土地」、「委任」という文字を検索して、Microsoft Wordに検索結果を出力するための方法を教えてください。）
+#以下ChatGPTによる出力結果
+
+import fitz  # PyMuPDF
+from docx import Document
+
+# === 設定 ===
+pdf_path = "sample.pdf"  # 読み取るPDFのパス
+keywords = ["土地", "委任"]  # 検索キーワード
+output_docx = "検索結果.docx"  # 出力するWordファイル名
+
+# === Word文書を作成 ===
+doc = Document()
+doc.add_heading("PDFキーワード検索結果", level=1)
+doc.add_paragraph(f"検索キーワード: {', '.join(keywords)}")
+
+# === PDFを開く ===
+pdf = fitz.open(pdf_path)
+
+for page_num, page in enumerate(pdf, start=1):
+    text = page.get_text("text")  # ページ全体のテキストを取得
+
+    # 各キーワードを検索
+    for keyword in keywords:
+        matches = page.search_for(keyword)
+        if matches:
+            # ページ内にキーワードがあった場合
+            doc.add_heading(f"ページ {page_num}", level=2)
+            for inst in matches:
+                # 該当部分の周辺文を抽出
+                # 前後50文字を抜き出して文脈を表示
+                idx = text.find(keyword)
+                if idx != -1:
+                    context = text[max(0, idx-50): idx+len(keyword)+50]
+                    doc.add_paragraph(f"【{keyword}】…{context.strip()}")
+
+# === 保存 ===
+pdf.close()
+doc.save(output_docx)
+
+print("検索が完了しました！結果は Word ファイルに保存されました。")
