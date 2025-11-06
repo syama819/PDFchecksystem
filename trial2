@@ -1,0 +1,80 @@
+＃コード作成試行２（次の内容を生成AIのプロンプトに入力：Pythonとpymupdfを使って、PDFのラベルを検索して必要な書類、例えば「申請書」、「委任状」、「理由書」等が添付されているか確認し、もし必要な書類が付いていなければ各書類のキーワードは無視して表形式とせずに「添付なし」とだけ表示する、もし必要な書類が付いていれば、各書類の中に複数のキーワード、例えば「申請書」であれば「氏名」や「住所」等、「委任状」であれば「連絡先」や「委任事項」等が記載されているか検索して、キーワードが掲載されているページ番号とキーワードの前後の文を数文字程度含めた検索結果をワードに表形式で表示するための方法を教えてください。必要なキーワードがない場合は、「記載なし」という内容も併せて出力させて欲しいです。作成するワードの冒頭には、「確認事項」という文字も追加して欲しいです。）
+#以下ChatGPTによる出力結果
+
+import fitz  # PyMuPDF
+from docx import Document
+from docx.shared import Inches
+
+# === 設定 ===
+pdf_path = "sample.pdf"  # 入力PDF
+output_docx = "検索結果.docx"
+
+# 書類と、それぞれ確認したいキーワードの辞書
+documents_to_check = {
+    "申請書": ["氏名", "住所"],
+    "委任状": ["連絡先", "委任事項"],
+    "理由書": ["理由", "説明"]
+}
+
+# === Word文書の準備 ===
+doc = Document()
+doc.add_heading("確認事項", level=1)
+
+# === PDFを開く ===
+pdf = fitz.open(pdf_path)
+
+# ページテキストをまとめて保持（検索効率UP）
+all_pages_text = [page.get_text("text") for page in pdf]
+
+# === 各書類ごとに確認 ===
+for doc_label, keywords in documents_to_check.items():
+    found_doc = False
+
+    # 書類（例：申請書）が含まれているページを探す
+    doc_pages = []
+    for i, text in enumerate(all_pages_text, start=1):
+        if doc_label in text:
+            found_doc = True
+            doc_pages.append(i)
+
+    # Wordに書類名の見出しを追加
+    doc.add_heading(doc_label, level=2)
+
+    if not found_doc:
+        # 添付なしの場合
+        doc.add_paragraph("添付なし")
+        continue
+
+    # === 書類がある場合、表を作成 ===
+    table = doc.add_table(rows=1, cols=3)
+    hdr_cells = table.rows[0].cells
+    hdr_cells[0].text = "キーワード"
+    hdr_cells[1].text = "ページ"
+    hdr_cells[2].text = "抜粋（前後の文）"
+
+    # 各キーワードを検索
+    for kw in keywords:
+        found_any = False
+        for page_num in doc_pages:
+            text = all_pages_text[page_num - 1]
+            idx = text.find(kw)
+            if idx != -1:
+                found_any = True
+                context = text[max(0, idx - 30): idx + len(kw) + 30].replace("\n", " ")
+                row_cells = table.add_row().cells
+                row_cells[0].text = kw
+                row_cells[1].text = str(page_num)
+                row_cells[2].text = context.strip()
+
+        if not found_any:
+            # そのキーワードがどのページにもない場合
+            row_cells = table.add_row().cells
+            row_cells[0].text = kw
+            row_cells[1].text = "-"
+            row_cells[2].text = "記載なし"
+
+# === 保存 ===
+pdf.close()
+doc.save(output_docx)
+
+print("完了しました。結果はWordファイルに保存されました。")
