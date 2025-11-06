@@ -1,0 +1,115 @@
+import fitz  # PyMuPDF
+from docx import Document
+from datetime import datetime
+
+
+# ===== 現在の日付（作業実施日）を取得 =====
+today_str = datetime.now().strftime("%Y年%m月%d日")
+today_str2 = datetime.now().strftime("%Y%m%d")
+
+# ===== 設定 =====
+pdf_path = "sample.pdf"  # 対象のPDFファイルパス
+output_docx = f"{today_str2}"+"確認事項_作業中v3.docx"  # 出力するWordファイル名
+context_chars = 30  # キーワード前後に表示する文脈文字数
+
+# ===== 書類名とキーワードの定義 =====
+documents = {
+    "申請書": ["所在地）", "代表者の氏名）", "電話", "電子メール", "住所及び氏名", "地目及び面積", "地目", "平方メートル", "区分", "用途", "構造", "面積", "高さ", "その他必要な事項"],
+    "委任状": ["連絡先", "委任事項"],
+    "理由書": ["区画の変更", "形状の変更", "性質の変更"],
+    "全部事項証明書": ["所在"],
+    "地図": ["所在"],
+    "付近見取図": ["申請地"],
+    "求積図": ["合計"],
+    "現況平面図": ["境界線"],
+    "現況断面図": ["境界線"],
+    "土地利用計画図": ["境界線"],
+    "造成計画平面図": ["合計"],
+    "造成計画断面図": ["最高切土高", "最高盛土高"],
+    "平面図": ["北", "延床面積"],
+    "立面図": ["GL", "最高高さ"]
+}
+
+# ===== Word文書初期化 =====
+doc = Document()
+
+pg1 = doc.add_paragraph(f"{today_str}")
+pg1.style = 'Normal'
+pg1.alignment = 2  # 0: 左寄せ, 1: 中央寄せ, 2: 右寄せ
+
+pg2 = doc.add_paragraph("送付状")
+pg2.alignment = 1
+
+pg3 = doc.add_paragraph("　様")
+pg3.add_run("\n Tel：　　Mail：　")
+
+pg4 = doc.add_paragraph("阪神北県民局　宝塚土木事務所　まちづくり建築課")
+pg4.alignment = 2
+pg4.add_run("\nTel：0797-83-3192（直通）")
+pg4.add_run("\nMail：Takarazuka_Machidukuri@pref.hyogo.lg.jp")
+
+doc.add_paragraph("")
+
+pg5 = doc.add_paragraph("申請書について")
+pg5.alignment = 1
+
+pg6 = doc.add_paragraph("　お世話になっております。標記の件について、以下のとおり確認したい事項等がありますのでご確認・ご対応をお願いいたします。")
+
+pg7 = doc.add_paragraph("申請者：")
+pg7.add_run("\n申請地：")
+
+pg8 = doc.add_paragraph("［確認等事項等一覧］")
+
+# ===== PDF読み込み =====
+pdf = fitz.open(pdf_path)
+pages_text = [page.get_text() for page in pdf]
+
+# ===== 書類ごとの処理 =====
+for doc_title, keywords in documents.items():
+    doc.add_heading(f"{doc_title}", level=3)
+
+    # 書類のページ検索
+    page_index = None
+    for i, text in enumerate(pages_text):
+        if doc_title in text:
+            page_index = i
+            break
+
+    if page_index is None:
+        # 書類が添付されていない場合：テキストだけ表示
+        doc.add_paragraph("添付なし：添付してください")
+        continue
+
+    # 書類が添付されている場合：テーブル作成
+    table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
+    table.cell(0, 0).text = "No."
+    table.cell(0, 1).text = "頁番号（図書名）"
+    table.cell(0, 2).text = "項目"
+    table.cell(0, 3).text = "内容"
+    table.cell(0, 4).text = "回答"
+
+    page_text = pages_text[page_index]
+
+    for keyword in keywords:
+        index = page_text.find(keyword)
+        if index != -1:
+            start = max(0, index - context_chars)
+            end = min(len(page_text), index + len(keyword) + context_chars)
+            context = page_text[start:end].replace("\n", " ").strip()
+            context = f"...{context}..."
+            status = "記載あり"
+        else:
+            context = "記載なし：記載してください"
+            status = "記載なし"
+
+        row = table.add_row().cells
+        row[0].text = "-"
+        row[1].text = str(i+1)
+        row[2].text = keyword
+        row[3].text = context
+        row[4].text = ""
+
+# ===== Word保存 =====
+doc.save(output_docx)
+print(f"検索結果を '{output_docx}' に保存しました。")
